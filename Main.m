@@ -1,32 +1,43 @@
-clear all 
-clc
-%%
+clear all; clc; close all;
+%% OPTIONS
+MESH_SCALE = 20;
+P_PAR = 3; % p-parameter
+ALPHA = 1.5; % alpha-parameter
+%% Initializing parameters and generating mesh
+% Material parameters
 E = 3e9;
 v = 0.4;
 t = 0.01;
 ptype = 1; % Plane stress
+D = [E/(1-v^2),     v*E/(1-v^2),    0
+     v*E/(1-v^2),    E/(1-v^2),      0
+     0,              0,              E*(1-v)/(2*(1-v^2))];
+
+% Generate mesh
 w = 0.3;
 h = 0.1;
-nx = 3*30;
-ny = 3*10;
-V = w*h/(nx*ny);
-V_0 = 0.4*w*h;
-[Edof,Enod,coord,Dof,F,I,bc] = genMesh(w, h, nx, ny);
+nx = MESH_SCALE*3;
+ny = MESH_SCALE*1;
+[Edof, Enod, coord, Dof, F, I, bc] = genMesh(w, h, nx, ny);
+F = sparse(F);
+[Ex, Ey] = coordxtr(Edof,coord,Dof,4);
+%N = findNeighbors(Ex, Ey, 0.021);
 nel = length(Enod(:,1));
 ndof = numel(Dof);
 
-X = 0.4*ones(nel, 1);
+V = w*h/(nx*ny); % element volume
+V_0 = 0.4*w*h; % target volume
+
+X = 0.4*ones(nel, 1); % initial density
 X_max = 1*ones(nel, 1);
 X_min = 1e-3*ones(nel, 1);
-
-[Ex, Ey] = coordxtr(Edof,coord,Dof,4);
+%% Plot geometry before optimization
 figure
-eldraw2(Ex,Ey,[2,4,1]);
-
-tol = 1e-4;
-D = [E/(1-v^2),     v*E/(1-v^2),    0
-    v*E/(1-v^2),    E/(1-v^2),      0
-    0,              0,              E*(1-v)/(2*(1-v^2))];
+axis equal
+eldraw2(Ex, Ey, [1, 2, 0]);
+hold on
+plot(mean(Ex(42, :)), mean(Ey(42, :)), 'r*');
+drawCircle(mean(Ex(42, :)), mean(Ey(42, :)), 0.02, 1, 1);
 %% objective function
 g_0 = @(u) F'*u;
 g_0plot = [];
@@ -39,17 +50,16 @@ for e = 1:nel
 end
 %% Optimization loop
 c = 0; % counter
+tol = 1e-4;
 X_norm = 1;
-alpha = 1.5;
-F = sparse(F);
-while X_norm > tol
-    p = 1;
+alpha = ALPHA;
+frames(loadSteps) = struct('cdata',[],'colormap',[]);
+while X_norm > tol && c < 600
+    p = P_PAR;
     c = c + 1;
     K = sysK(k_0, X.^p, Edof, ndof);
-    tic
     K = sparse(K);
     u = solveq(K, F, bc);
-    toc
     g_0plot = [g_0plot g_0(u)];
     X_next = optimization(X, u, Edof, k_0, V, V_0, X_max, X_min, p, alpha);
 
@@ -57,23 +67,23 @@ while X_norm > tol
     X = X_next;
     disp(c);
 end
-figure
-superdraw2(Ex, Ey, X);
-X_norm = 1;
-while X_norm > tol && c < 600
-    p = 3;
-    c = c + 1;
-    K = sysK(k_0, X.^p, Edof, ndof);
-    u = solveq(K, F, bc);
-    g_0plot = [g_0plot g_0(u)];
-    X_next = optimization(X, u, Edof, k_0, V, V_0, X_max, X_min, p, alpha);
-
-    X_norm = norm(X_next - X);
-    X = X_next;
-    disp(c);
-end
-%% Post
+%% Post-processing plotting
 figure;
 superdraw2(Ex, Ey, X);
+axis equal;
+annotation('textbox',...
+    [0.14 0.94 0.34 0.06], ...
+    'String', sprintf("Initial: %.1f; p = %d; Term. tol: %.1e; \\alpha = %.1f; Iterations: %d", ...
+    0.4, p, tol, alpha, c), ...
+    'FitBoxToText','on');
+
 figure;
 plot(g_0plot);
+title("Objective function value");
+ylabel("g_0");
+xlabel("Iterations");
+annotation('textbox',...
+    [0.45 0.73 0.34 0.14], ...
+    'String', sprintf("Initial: %.1f; p = %d; Term. tol: %.1e;\n \\alpha = %.1f; Iterations: %d", ...
+    0.4, p, tol, alpha, c), ...
+    'FitBoxToText','on');
