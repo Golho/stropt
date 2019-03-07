@@ -1,14 +1,19 @@
 clear all; clc; close all;
 %% OPTIONS
-MESH_SCALE = 30;
+PLOTNOW = 1;
+FILTER = 1;
+CASE = 1;
+MOVIE = 0;
+
+TERM_TOL = 1e-3; % termination tolerance
+MESH_SCALE = 40;
 P_PAR = 3; % p-parameter
 ALPHA = 1.5; % alpha-parameter
-RADIUS = 0.015; % Radius of Weight function
-CASE = 2;
+RADIUS = 0.005; % Radius of Weight function
 U_MAX = 0.5e-3; % Maximum displacement in case 2
-VOLUME_PROCENT = 0.25;
+VOLUME_PROCENT = 0.4;
 MMA_S = [0.5, 1.2, 0.7];
-PLOTNOW = 1;
+DELTA = 1e-3; % Lower boundary of the density
 %% Initializing parameters and generating mesh
 % Material parameters
 E = 3e9;
@@ -29,19 +34,22 @@ ny = MESH_SCALE*1;
 P = 50;
 F = sparse(F);
 [Ex, Ey] = coordxtr(Edof,coord,Dof,4);
-nel = length(Enod(:,1));
-ndof = numel(Dof);
+nbrElems = length(Enod(:,1));
+nbrDofs = numel(Dof);
 
 V_box = w*h*t;
 V_max = VOLUME_PROCENT*V_box; % target volume
-V_e = V_max / (nx*ny); % element volume
+V_e = V_box / (nx*ny); % element volume
 
-X = VOLUME_PROCENT*ones(nel, 1); % initial density
-%load p1X
-X_filt = zeros(nel,1);
-X_max = 1*ones(nel, 1);
-X_min = 1e-1*ones(nel, 1);
-N = findNeighbors(Ex,Ey,RADIUS);
+X = VOLUME_PROCENT*ones(nbrElems, 1); % initial density
+X_min = DELTA*ones(nbrElems, 1);
+X_max = 1*ones(nbrElems, 1);
+% Create the weight matrix N
+if FILTER
+    N = findNeighbors(Ex,Ey,RADIUS);
+else
+    N = sparse(eye(nbrElems));
+end
 %% Plot geometry before optimization
 figure
 axis equal
@@ -73,29 +81,29 @@ g_1 = @(X) V_e*sum(X)/V_max - 1;
 g_2 = @(u) F'*u /(P * U_MAX) - 1;
 gplot = zeros(3, 600);
 %% k_0
-k_0 = cell(nel, 1);
-for e = 1:nel
+k_0 = cell(nbrElems, 1);
+for e = 1:nbrElems
     ex = Ex(e, :);
     ey = Ey(e, :);
     k_0{e} = planre(ex([1, 3]), ey([1, 3]), [ptype t], D);
 end
 %% Optimization loop
-X_old1 = X;%zeros(nel, 1);
-X_old2 = X;%zeros(nel, 1);
+X_old1 = X;
+X_old2 = X;
 low = 0; 
 upp = 1;
-iter = 0; % counter
-tol = 1e-3;
+iter = 0; % iteration counter
+
 X_norm = 1;
 alpha = ALPHA;
 frames = []; %struct('cdata',[],'colormap',[]);
 p = P_PAR;
-while X_norm > tol && iter < 600
+while X_norm > TERM_TOL && iter < 600
     iter = iter + 1;
     
     X_filt = N*X;
 
-    K = sysK(k_0, X_filt.^p, Edof, ndof);
+    K = sysK(k_0, X_filt.^p, Edof, nbrDofs);
     K = sparse(K);
     if CASE == 2
         K(I ~= 0) = K(I ~= 0) + k;
@@ -106,49 +114,23 @@ while X_norm > tol && iter < 600
         X_next = optimization(X, u, Edof, k_0, V_e, V_max, X_max, X_min, p, alpha,N);
     elseif CASE == 2
         z = solveq(K, I, bc);
-        %fGrad = filterGradient(X_filt, p, k_0, u, Edof, N, 2);
-        g_0gradient = zeros(nel, 1);
-        g_2gradient = zeros(nel, 1);
-        for e = 1:nel
-            idof = Edof(e, 2:end);
-            u_j = u(idof);
-            z_j = z(idof);
-            neighbors = find(N(e, :));
-            for iNeighbor = neighbors
-                w = N(e, iNeighbor);
-                g_0gradient(e) = g_0gradient(e) + w * u_j'* p*X_filt(e)^(p-1)*k_0{e} *z_j / U_MAX;
-                g_2gradient(e) = g_2gradient(e) + w * -u_j'* p*X_filt(e)^(p-1)*k_0{e} *u_j / (P*U_MAX);
-            end
-        end
-        
-        h = 1e-5;
-        %gDiff = numGrad(g_0, X, h, Edof, ndof, p, k_0, F, bc, I, k);
-        %gGrad1 = (gDiff - g_0(u)) / h;
-        %gGrad(:, 1) ./ g_2gradient
-        %max(abs(gGrad1 ./ g_0gradient-1))
-        %g_0gradient = gGrad1;
-        %gDiff = numGrad(g_2, X, h, Edof, ndof, p, k_0, F, bc, I, k);
-        %gGrad2 = (gDiff - g_2(u)) / h;
-        %gGrad(:, 1) ./ g_2gradient
-        %max(abs(gGrad2 ./ g_2gradient-1))
-        %g2_gradient = gGrad2;
-        %g_2gradient = gGrad(:, 1);
-        %g_0gradient = fGrad' * z / U_MAX;
-        g_1gradient = V_e/V_max*ones(nel, 1);
-        %g_2gradient = u*%-filterGradient(X_filt, p, k_0, u, Edof, N, 1) / ( P * U_MAX );
+        g_0gradient = filterGradient(X_filt, z, u, p, k_0, Edof, N) / U_MAX;
+        g_1gradient = V_e/V_max*ones(nbrElems, 1);
+        g_2gradient = filterGradient(X_filt, u, u, p, k_0, Edof, N) / (-P*U_MAX);
 
         [X_next, low, upp] = mma_solver(iter, X, X_old1, X_old2, g_0gradient, ...
-            [g_1(X); g_2(u)], [g_1gradient, g_2gradient], low, upp, [nel, ...
-            MMA_S, X_min(1)]);
+            [g_1(X); g_2(u)], [g_1gradient'; g_2gradient'], low, upp, [nbrElems, ...
+            MMA_S, DELTA]);
     end
+    
     X_norm = norm(X_next - X);
     
     X_old2 = X_old1;
     X_old1 = X;
-    
     X = X_next;
     
-    %% Intermediate plot
+    disp(iter);
+    %% Intermediate plotting
     if PLOTNOW
         g0Plot.YData = gplot(1, 1:iter);
         g1Plot.YData = gplot(2, 1:iter);
@@ -156,25 +138,23 @@ while X_norm > tol && iter < 600
         drawnow
     end
     
-    
-    disp(iter);
-%     if mod(iter, 5) == 0
-%         figStructure = figure('visible', 'off');
-%         superdraw2(Ex, Ey, X);
-%         axis equal;
-%         frames = [frames getframe(figStructure)];
-%         close(figStructure);
-%     end
+    % Plot movie frames
+    if MOVIE && mod(iter, 2) == 0
+        figStructure = figure('visible', 'off');
+        superdraw2(Ex, Ey, X);
+        axis equal;
+        frames = [frames getframe(figStructure)];
+        close(figStructure);
+    end
 end
-X_filt = N*X;
 %% Post-processing plotting
 figure;
-superdraw2(Ex, Ey, X_filt);
+superdraw2(Ex, Ey, N*X);
 axis equal;
 annotation('textbox',...
     [0.14 0.94 0.34 0.06], ...
     'String', sprintf("Initial: %.1f; p = %d; Term. tol: %.1e; \\alpha = %.1f; Iterations: %d", ...
-    0.4, p, tol, alpha, iter), ...
+    0.4, p, TERM_TOL, alpha, iter), ...
     'FitBoxToText','on');
 
 figure;
@@ -185,7 +165,7 @@ xlabel("Iterations");
 annotation('textbox',...
     [0.45 0.73 0.34 0.14], ...
     'String', sprintf("Initial: %.1f; p = %d; Term. tol: %.1e;\n \\alpha = %.1f; Iterations: %d", ...
-    0.4, p, tol, alpha, iter), ...
+    0.4, p, TERM_TOL, alpha, iter), ...
     'FitBoxToText','on');
 
 figure;
@@ -196,7 +176,7 @@ xlabel("Iterations");
 annotation('textbox',...
     [0.45 0.73 0.34 0.14], ...
     'String', sprintf("Initial: %.1f; p = %d; Term. tol: %.1e;\n \\alpha = %.1f; Iterations: %d", ...
-    0.4, p, tol, alpha, iter), ...
+    0.4, p, TERM_TOL, alpha, iter), ...
     'FitBoxToText','on');
 
 figure;
@@ -207,5 +187,5 @@ xlabel("Iterations");
 annotation('textbox',...
     [0.45 0.73 0.34 0.14], ...
     'String', sprintf("Initial: %.1f; p = %d; Term. tol: %.1e;\n \\alpha = %.1f; Iterations: %d", ...
-    0.4, p, tol, alpha, iter), ...
+    0.4, p, TERM_TOL, alpha, iter), ...
     'FitBoxToText','on');

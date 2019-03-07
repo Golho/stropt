@@ -1,36 +1,25 @@
-function [gradient] = filterGradient(X_filt, p, k_0, u, edof, N, CASE)
-% Derivate [dK/drho_i * u]
-nbrVars = length(X_filt);
-nbrDofs = length(u);
-if CASE == 1
-    gradient = zeros(nbrVars, 1);
-elseif CASE == 2
-    gradient = spalloc(nbrDofs, nbrVars, 8*nbrVars);
-end
-ed = u(edof(:, 2:end));
-for var = 1:nbrVars
-    varDof = edof(var, 2:end);
-    dfdx = zeros(nnz(N(var,:)),1);
-    c = 1;
-    neighbors = find(N(var, :));
-    sumGrad = zeros(8, 1);
-    for ie = neighbors
-        dxidxe = N(var,ie);
-        u_j = ed(ie, :)';
-        if CASE == 1
-            dfdxi = u_j'*p*X_filt(ie)^(p-1)*k_0{ie}*u_j;
-            dfdx(c) = dxidxe*dfdxi;
-        elseif CASE == 2
-            grad_e = p*X_filt(ie)^(p-1)*k_0{ie}*u_j;
-            sumGrad = sumGrad + grad_e*dxidxe;
-        end
-        c = c + 1;
-    end
-    
-    if CASE == 1
-        gradient(var) = sum(dfdx);
-    elseif CASE == 2
-        gradient(varDof, var) = gradient(varDof, var) + sumGrad;
+function [gradient] = filterGradient(X_filt, u_1, u_2, p, k_0, edof, N)
+% Calculate u_1' * dK/drho_j * u_2 where K = X_filt^p * k_0
+%   X_filt      Filtered densities [nbrElems x 1]
+%   u_1         Displacements u_1 (see above) [nbrDofs x 1]
+%   u_2         Displacements u_2 (see above) [nbrDofs x 1]
+%   p           Penalization parameter
+%   k_0         Cell array with element k_0 matrices {nbrElems x [8 x 8]}
+%   edof        Coupling between elements and degrees of freedom
+%   N           Weighting matrix for the density filter 
+%               [nbrElems x nbrElems]
+%
+%   gradient    Gradient (see above) [nbrElems x 1]
+nbrElems = length(X_filt);
+gradient = zeros(nbrElems, 1);
+for e = 1:nbrElems
+    idof = edof(e, 2:end);
+    u_1j = u_1(idof);
+    u_2j = u_2(idof);
+    neighbors = find(N(e, :));
+    for iNeighbor = neighbors
+        w = N(e, iNeighbor);
+        gradient(e) = gradient(e) + w * u_1j'* p*X_filt(e)^(p-1)*k_0{e} *u_2j;
     end
 end
 end
