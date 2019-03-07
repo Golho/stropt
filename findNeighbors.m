@@ -9,10 +9,10 @@ function [N] = findNeighbors(Ex, Ey, R)
 
 W = diff(Ex(1, [1 2]));
 H = diff(Ey(1, [2 3]));
-maxNeighbors = 4*R^2/(W*H);
+maxNeighbors = 1 + 4*R^2/(W*H);
 nbrElems = length(Ex);
 N = sparse(1:nbrElems, 1:nbrElems, R*ones(1, nbrElems), ...
-    nbrElems, nbrElems, ceil(maxNeighbors*2*nbrElems));
+    nbrElems, nbrElems, 2*nbrElems*ceil(maxNeighbors));
 for current = 1:nbrElems
     xCurrent = sum(Ex(current, :))/4;
     yCurrent = sum(Ey(current, :))/4;

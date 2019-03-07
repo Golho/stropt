@@ -1,4 +1,4 @@
-function [Edof,Enod,coord,Dof,F,I,bc]=genMesh(w,h,nx,ny)
+function [Edof,Enod,coord,Dof,F,I,bc]=genMesh(w,h,nx,ny,CASE)
 % PURPOSE
 %  Generate FE-mesh for a rectangular design domain.
 %    NOTE 1:  the user must manually modify the code, see Step 3.
@@ -92,107 +92,108 @@ end
 % -- Step 3.1 - symmetry at left side of the mesh (for the MBB beam)
 % Find elements at left side for symmetry BC
 % Check for 0 in ex
-
-symbcEl=zeros(ny,1); % note: ny
-sze=size(ex(1,:),2);
-yie=1;
-for ie=1:nelm
-    for i=1:sze
-        if(ex(ie,i)==0)
-            symbcEl(yie)=ie;
-            yie=yie+1;
-            break;
+if CASE == 1
+    symbcEl=zeros(ny,1); % note: ny
+    sze=size(ex(1,:),2);
+    yie=1;
+    for ie=1:nelm
+        for i=1:sze
+            if(ex(ie,i)==0)
+                symbcEl(yie)=ie;
+                yie=yie+1;
+                break;
+            end
         end
     end
-end
-% Now create the actual BC. Start with the symmetry conditions
-%
-bcsymdofs=zeros(ny+1,1); % should be equal to the number of ynods
-for i=1:ny
-    xsymdof1=Edof(symbcEl(i),2); % pick out the two xdofs from the given
-    xsymdof2=Edof(symbcEl(i),8); % elements using Edof
-    bcsymdofs(i)  = xsymdof1;
-    bcsymdofs(i+1)= xsymdof2;
-    % In this way we overwrite values for the bcsymdofs. But it is OK,
-    % it is supposed to be that way to avoid copies of the ysymdofs.
-    ydofF=xsymdof2+1; % The last y-dof is where the load should be applied
-end
-% Fixed y-dof at right bottom corner.
-% (nx+1) is the node number there.
-fixedbcdofs=[(nx+1)*2-1;(nx+1)*2];  
+    % Now create the actual BC. Start with the symmetry conditions
+    %
+    bcsymdofs=zeros(ny+1,1); % should be equal to the number of ynods
+    for i=1:ny
+        xsymdof1=Edof(symbcEl(i),2); % pick out the two xdofs from the given
+        xsymdof2=Edof(symbcEl(i),8); % elements using Edof
+        bcsymdofs(i)  = xsymdof1;
+        bcsymdofs(i+1)= xsymdof2;
+        % In this way we overwrite values for the bcsymdofs. But it is OK,
+        % it is supposed to be that way to avoid copies of the ysymdofs.
+        ydofF=xsymdof2+1; % The last y-dof is where the load should be applied
+    end
+    % Fixed y-dof at right bottom corner.
+    % (nx+1) is the node number there.
+    fixedbcdofs=[(nx+1)*2-1;(nx+1)*2];  
 
-zv=zeros(length(bcsymdofs),1); % zero vector
-bcsym=[bcsymdofs zv];          % symmetry bc
-bcfix=[fixedbcdofs(2) 0];      % fixed bc 
+    zv=zeros(length(bcsymdofs),1); % zero vector
+    bcsym=[bcsymdofs zv];          % symmetry bc
+    bcfix=[fixedbcdofs(2) 0];      % fixed bc 
 
-bc=[bcsym;bcfix];
-F=zeros(nnods*dofnod,1);       % external force vector
-F(ydofF)=-1;
-I = F*0.; % not used for this problem
+    bc=[bcsym;bcfix];
+    F=zeros(nnods*dofnod,1);       % external force vector
+    F(ydofF)=-1;
+    I = F*0.; % not used for this problem
+end
 % -- end Step 3.1
 %
 % -- Step 3.2 - symmetry at bottom side of the mesh (for the mechanism)
 % Find elements at bottom side for symmetry BC
 % Check for 0 in ey
+if CASE == 2
+    symbcEl=zeros(nx,1); % note: nx
+    sze=size(ey(1,:),2);
+    xie=1;
+    for ie=1:nelm
+        for i=1:sze
+            if(ey(ie,i)==0)
+                symbcEl(xie)=ie;
+                xie=xie+1;
+                break;
+            end
+        end
+    end
+    % Now create the actual BC. Start with the symmetry conditions
+    bcsymdofs=zeros(nx+1,1); % should be equal to the number of xnods
+    for i=1:nx
+        ysymdof1=Edof(symbcEl(i),3); % pick out the two ydofs from the given elements
+        ysymdof2=Edof(symbcEl(i),5); % using Edof
+        bcsymdofs(i)  = ysymdof1;
+        bcsymdofs(i+1)= ysymdof2;
+        % In this way we overwrite values for the bcsymdofs. But it is OK,
+        % it is supposed to be that way to avoid copies of the ysymdofs.
+    end
+    %
+    factor = 0.25; % percentage of the (upper part of the) left boundary
+                   % that is clamped/fixed.
+    fixedbcdofs=[];
+    nn = max(max(Enod));
+    tmp = zeros(nn,2);
+    for ie=1:nelm
+        for i=1:4
+            % left boundary and [factor] top of it
+            if(ex(ie,i)==0 && (ey(ie,i) > (1.-factor)*max(max(ey))) )
+                nod=Enod(ie,i+1);
+                xdof=nod*2-1;
+                ydof=nod*2;
 
-% symbcEl=zeros(nx,1); % note: nx
-% sze=size(ey(1,:),2);
-% xie=1;
-% for ie=1:nelm
-%     for i=1:sze
-%         if(ey(ie,i)==0)
-%             symbcEl(xie)=ie;
-%             xie=xie+1;
-%             break;
-%         end
-%     end
-% end
-% % Now create the actual BC. Start with the symmetry conditions
-% bcsymdofs=zeros(nx+1,1); % should be equal to the number of xnods
-% for i=1:nx
-%     ysymdof1=Edof(symbcEl(i),3); % pick out the two ydofs from the given elements
-%     ysymdof2=Edof(symbcEl(i),5); % using Edof
-%     bcsymdofs(i)  = ysymdof1;
-%     bcsymdofs(i+1)= ysymdof2;
-%     % In this way we overwrite values for the bcsymdofs. But it is OK,
-%     % it is supposed to be that way to avoid copies of the ysymdofs.
-% end
-% %
-% factor = 0.25; % percentage of the (upper part of the) left boundary
-%                % that is clamped/fixed.
-% fixedbcdofs=[];
-% nn = max(max(Enod));
-% tmp = zeros(nn,2);
-% for ie=1:nelm
-%     for i=1:4
-%         % left boundary and [factor] top of it
-%         if(ex(ie,i)==0 && (ey(ie,i) > (1.-factor)*max(max(ey))) )
-%             nod=Enod(ie,i+1);
-%             xdof=nod*2-1;
-%             ydof=nod*2;
-%             
-%             tmp(nod,1)=nod;
-%             if(tmp(nod,2) == 0) % no double
-%                 tmp(nod,2) = 1;
-%                 fixedbcdofs=[fixedbcdofs; xdof];
-%                 fixedbcdofs=[fixedbcdofs; ydof];
-%             end
-%             
-%         end
-%     end
-% end
-% 
-% zv=zeros(length(bcsymdofs),1); % zero vector
-% bcsym=[bcsymdofs zv];          % symmetry bc
-% bcfix=[fixedbcdofs'; zeros(length(fixedbcdofs),1)'];  % fixed bc
-% bc=[bcfix bcsym']';
-%   
-% F=zeros(nnods*dofnod,1);       % external force vector
-% F(max(max(Edof)))=-1;          % apply in top right y-DOF
-% 
-% I = zeros(nnods*dofnod,1);   % "identification vector":
-% I(1) = -1;                   % nonzero in the one of the DOF 
-%                              % connected to the spring element 
+                tmp(nod,1)=nod;
+                if(tmp(nod,2) == 0) % no double
+                    tmp(nod,2) = 1;
+                    fixedbcdofs=[fixedbcdofs; xdof];
+                    fixedbcdofs=[fixedbcdofs; ydof];
+                end
+
+            end
+        end
+    end
+
+    zv=zeros(length(bcsymdofs),1); % zero vector
+    bcsym=[bcsymdofs zv];          % symmetry bc
+    bcfix=[fixedbcdofs'; zeros(length(fixedbcdofs),1)'];  % fixed bc
+    bc=[bcfix bcsym']';
+
+    F=zeros(nnods*dofnod,1);       % external force vector
+    F(max(max(Edof))) = -50;          % apply in top right y-DOF
+
+    I = zeros(nnods*dofnod,1);   % "identification vector":
+    I(1) = -1;                   % nonzero in the one of the DOF 
+end                              % connected to the spring element 
 % % -- end Part 3.2
 
 % END
