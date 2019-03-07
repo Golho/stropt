@@ -13,6 +13,7 @@ for var = 1:nbrVars
     dfdx = zeros(nnz(N(var,:)),1);
     c = 1;
     neighbors = find(N(var, :));
+    sumGrad = zeros(8, 1);
     for ie = neighbors
         dxidxe = N(var,ie);
         u_j = ed(ie, :)';
@@ -21,12 +22,15 @@ for var = 1:nbrVars
             dfdx(c) = dxidxe*dfdxi;
         elseif CASE == 2
             grad_e = p*X_filt(ie)^(p-1)*k_0{ie}*u_j;
-            gradient(varDof, var) = gradient(varDof, var) + grad_e*dxidxe;
+            sumGrad = sumGrad + grad_e*dxidxe;
         end
         c = c + 1;
     end
+    
     if CASE == 1
         gradient(var) = sum(dfdx);
+    elseif CASE == 2
+        gradient(varDof, var) = gradient(varDof, var) + sumGrad;
     end
 end
 end

@@ -1,6 +1,6 @@
 clear all; clc; close all;
 %% OPTIONS
-MESH_SCALE = 20;
+MESH_SCALE = 10;
 P_PAR = 3; % p-parameter
 ALPHA = 1.5; % alpha-parameter
 RADIUS = 0.015; % Radius of Weight function
@@ -77,9 +77,8 @@ frames = []; %struct('cdata',[],'colormap',[]);
 p = P_PAR;
 while X_norm > tol && iter < 600
     iter = iter + 1;
-    for ie=1:nel
-        X_filt(ie) = sum(N(ie,:)*X);
-    end
+    
+    X_filt = N*X;
     
     % OBS; INGEN FILTRERING SKER
     X_filt = X;
@@ -92,27 +91,34 @@ while X_norm > tol && iter < 600
     u = solveq(K, F, bc);
     gplot(:, iter) = [g_0(u); g_1(X); g_2(u)];
     if CASE == 1
-        X_next = optimization(X, u, Edof, k_0, V, V_0, X_max, X_min, p, alpha,X_filt,N);
+        X_next = optimization(X, u, Edof, k_0, V, V_0, X_max, X_min, p, alpha,N);
     elseif CASE == 2
         z = solveq(K, I, bc);
-        fGrad = filterGradient(X_filt, p, k_0, u, Edof, N, 2);
+        %fGrad = filterGradient(X_filt, p, k_0, u, Edof, N, 2);
         g_0gradient = zeros(nel, 1);
         g_2gradient = zeros(nel, 1);
         for e = 1:nel
             idof = Edof(e, 2:end);
-            dK = sparse(ndof, ndof, 64);
-            dK(idof, idof) = p*X(e)^(p-1)*k_0{e};
-            g_0gradient(e) = u'*dK*z / U_MAX;
-            g_2gradient(e) = -u'*dK*u / (P*U_MAX);
+            u_j = u(idof);
+            z_j = z(idof);
+            
+            g_0gradient(e) = u_j'* p*X(e)^(p-1)*k_0{e} *z_j / U_MAX;
+            g_2gradient(e) = -u_j'* p*X(e)^(p-1)*k_0{e} *u_j / (P*U_MAX);
         end
         
+        h = 1e-7;
+        gDiff = numGrad(g_0, X, h, Edof, ndof, p, k_0, F, bc, I, k);
+        gGrad(:, 1) = (gDiff(:, 1) - g_0(u)) / h;
+        %gGrad(:, 1) ./ g_2gradient
+        max(abs(gGrad(:, 1) ./ g_0gradient-1))
+        %g_2gradient = gGrad(:, 1);
         %g_0gradient = fGrad' * z / U_MAX;
         g_1gradient = V/V_0*ones(nel, 1);
         %g_2gradient = u*%-filterGradient(X_filt, p, k_0, u, Edof, N, 1) / ( P * U_MAX );
 
         [X_next, low, upp] = mma_solver(iter, X, X_old1, X_old2, g_0gradient, ...
             [g_1(X); g_2(u)], [g_1gradient, g_2gradient], low, upp, [nel, ...
-            0.5, 0.5, 1.5, X_min(1)]);
+            0.5, 0.7, 1.2, X_min(1)]);
     end
     X_norm = norm(X_next - X);
     
@@ -131,9 +137,7 @@ while X_norm > tol && iter < 600
 %         close(figStructure);
 %     end
 end
-for ie=1:nel
-    X_filt(ie) = sum(N(ie,:)*X);
-end
+X_filt = N*X;
 %% Post-processing plotting
 figure;
 superdraw2(Ex, Ey, X);

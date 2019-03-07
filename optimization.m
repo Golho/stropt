@@ -1,4 +1,4 @@
-function [X] = optimization(X_now, u, edof, k_0, V, V_0, X_max, X_min, p, alpha,X_filt,N)
+function [X] = optimization(X_now, u, edof, k_0, V, V_0, X_max, X_min, p, alpha,N)
 %OPTIMIZATION Summary of this function goes here
 %   Detailed explanation goes here
 nbrVars = length(X_now);
@@ -6,6 +6,7 @@ b_k = zeros(nbrVars,1);
 ed = u(edof(:,2:end));
 % Use density filter if N exists in function
 if exist('N', 'var')
+    X_filt = N*X_now;
     b_k = 1/alpha*(filterGradient(X_filt, p, k_0, u, edof, N, 1)) ...
         .* X_now .^(alpha+1); 
 else
@@ -16,7 +17,7 @@ else
 end
 dphi_lambda_zero = @(lambda) dphi_dlambda(lambda, X_now,V, V_0, X_max, X_min, alpha,b_k);
 lambda = fzero(dphi_lambda_zero, 1);
-X = X_star(lambda, X_now, X_max, X_min, V, alpha,b_k);
+X = X_star(lambda, X_now, X_max, X_min, V, alpha, b_k);
 end
 
 function [d_phi] = dphi_dlambda(lambda, X_now, V, V_0, X_max, X_min, alpha ,b_k)
