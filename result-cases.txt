@@ -1,0 +1,43 @@
+STD-inställning är: 
+##########
+Mesh	20
+Radius	10 mm
+p	3
+alpha	1.5
+u_max	0.5 mm
+##########
+
+CASE 1
+-------------------------------------------- 
+Initial         Homogen fördelning
+		Kriss-kross
+		Designen efter optimering på p=1
+
+-------------------------------------------- 
+p		2
+		3
+		4
+-------------------------------------------- 
+Meshscale	10 (med/utan filter)
+		25 (med/utan filter)
+		40 (med/utan filter)
+-------------------------------------------- 
+Radius		5 mm
+(för mesh 30)	10 mm
+		20 mm
+
+CASE 2
+-------------------------------------------- 
+Initial		Homogen fördelning
+		Kriss-kross
+		Designen efter optimering på p=1
+-------------------------------------------- 
+u_max		0.05 mm
+		0.5 mm
+		5 mm
+-------------------------------------------- 
+Mesh		25
+		40
+-------------------------------------------- 
+V_max		0.25
+		0.4

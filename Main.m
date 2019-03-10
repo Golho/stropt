@@ -6,11 +6,11 @@ CASE = 1;
 MOVIE = 0;
 
 TERM_TOL = 1e-3; % termination tolerance
-MESH_SCALE = 40;
+MESH_SCALE = 20;
 P_PAR = 3; % p-parameter
 ALPHA = 1.5; % alpha-parameter
-RADIUS = 0.005; % Radius of Weight function
-U_MAX = 0.5e-3; % Maximum displacement in case 2
+RADIUS = 0.007; % Radius of Weight function
+U_MAX = 0.5e-1; % Maximum displacement in case 2
 VOLUME_PROCENT = 0.4;
 MMA_S = [0.5, 1.2, 0.7];
 DELTA = 1e-3; % Lower boundary of the density
