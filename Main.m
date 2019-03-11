@@ -41,19 +41,19 @@ V_box = w*h*t;
 V_max = VOLUME_PROCENT*V_box; % target volume
 V_e = V_box / (nx*ny); % element volume
 
-X = VOLUME_PROCENT*ones(nbrElems, 1); % initial density
+%X = VOLUME_PROCENT*ones(nbrElems, 1); % initial density
 %load('noSIMPX');
 X_min = DELTA*ones(nbrElems, 1);
 X_max = 1*ones(nbrElems, 1);
-% X = zeros(nx, ny);
-% for ie = 1: nx/2
-%     X(2*ie -1,:) = 1;
-%     X(2*ie,:) = DELTA;
-% end
-% for ie = 1: ny/2
-%     X(:,(2*ie -1)) = 1;
-% end
-% X = X(:);
+X = zeros(nx, ny);
+for ie = 1: nx/2
+    X(2*ie -1,:) = 1;
+    X(2*ie,:) = DELTA;
+end
+for ie = 1: ny/2
+    X(:,(2*ie -1)) = 1;
+end
+X = X(:);
 
 % Create the weight matrix N
 if FILTER
@@ -169,7 +169,7 @@ annotation('textbox',...
     'FitBoxToText','on');
 
 figure;
-plot(gplot(1, 1:iter));
+plot(gplot(1, 1:iter-1));
 title("Objective function value");
 ylabel("g_0");
 xlabel("Iterations");
