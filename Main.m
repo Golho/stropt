@@ -1,16 +1,16 @@
 clear all; clc; close all;
 %% OPTIONS
-PLOTNOW = 1;
+PLOTNOW = 0;
 FILTER = 1;
-CASE = 1;
+CASE = 2;
 MOVIE = 0;
 
 TERM_TOL = 1e-3; % termination tolerance
-MESH_SCALE = 20;
+MESH_SCALE = 25;
 P_PAR = 3; % p-parameter
 ALPHA = 1.5; % alpha-parameter
-RADIUS = 0.007; % Radius of Weight function
-U_MAX = 0.5e-1; % Maximum displacement in case 2
+RADIUS = 0.010; % Radius of Weight function
+U_MAX = 0.0005; % Maximum displacement in case 2
 VOLUME_PROCENT = 0.4;
 MMA_S = [0.5, 1.2, 0.7];
 DELTA = 1e-3; % Lower boundary of the density
@@ -42,8 +42,19 @@ V_max = VOLUME_PROCENT*V_box; % target volume
 V_e = V_box / (nx*ny); % element volume
 
 X = VOLUME_PROCENT*ones(nbrElems, 1); % initial density
+%load('noSIMPX');
 X_min = DELTA*ones(nbrElems, 1);
 X_max = 1*ones(nbrElems, 1);
+% X = zeros(nx, ny);
+% for ie = 1: nx/2
+%     X(2*ie -1,:) = 1;
+%     X(2*ie,:) = DELTA;
+% end
+% for ie = 1: ny/2
+%     X(:,(2*ie -1)) = 1;
+% end
+% X = X(:);
+
 % Create the weight matrix N
 if FILTER
     N = findNeighbors(Ex,Ey,RADIUS);
