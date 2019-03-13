@@ -1,19 +1,19 @@
 clear all; clc; close all;
 %% OPTIONS
-PLOTNOW = 0;
+PLOTNOW = 1;
 FILTER = 1;
 CASE = 2;
 MOVIE = 0;
 
 TERM_TOL = 1e-3; % termination tolerance
-MESH_SCALE = 25;
+MESH_SCALE = 10;
 P_PAR = 3; % p-parameter
 ALPHA = 1.5; % alpha-parameter
-RADIUS = 0.010; % Radius of Weight function
-U_MAX = 0.0005; % Maximum displacement in case 2
+RADIUS = 0.015; % Radius of Weight function
+U_MAX = 5.0e-3; % Maximum displacement in case 2
 VOLUME_PROCENT = 0.4;
 MMA_S = [0.5, 1.2, 0.7];
-DELTA = 1e-3; % Lower boundary of the density
+DELTA = 1e-6; % Lower boundary of the density
 %% Initializing parameters and generating mesh
 % Material parameters
 E = 3e9;
@@ -41,19 +41,9 @@ V_box = w*h*t;
 V_max = VOLUME_PROCENT*V_box; % target volume
 V_e = V_box / (nx*ny); % element volume
 
-%X = VOLUME_PROCENT*ones(nbrElems, 1); % initial density
-%load('noSIMPX');
-X_min = DELTA*ones(nbrElems, 1);
+X = VOLUME_PROCENT*ones(nbrElems, 1); % initial density
+X_min = zeros(nbrElems, 1);
 X_max = 1*ones(nbrElems, 1);
-X = zeros(nx, ny);
-for ie = 1: nx/2
-    X(2*ie -1,:) = 1;
-    X(2*ie,:) = DELTA;
-end
-for ie = 1: ny/2
-    X(:,(2*ie -1)) = 1;
-end
-X = X(:);
 
 % Create the weight matrix N
 if FILTER
@@ -82,13 +72,24 @@ title("g_1");
 subplot(2, 2, 3);
 g2Plot = plot(0, 'LineWidth', 1);
 title("g_2");
+
+figStruct = figure;
+if CASE == 1
+    structPlot(1) = superdraw2(Ex, Ey, X);
+    structPlot(2) = superdraw2(-Ex, Ey, X);
+elseif CASE == 2
+    structPlot(1) = superdraw2(Ex, Ey, X);
+    structPlot(2) = superdraw2(Ex, -Ey, X);
+end
+axis equal;
+caxis([0 1]);
 %% objective function
 if CASE == 1
     g_0 = @(u) F'*u;
 elseif CASE == 2
     g_0 = @(u) -I'*u / U_MAX;
 end
-g_1 = @(X) V_e*sum(X)/V_max - 1;
+g_1 = @(X) V_e/V_max*sum(N*X) - 1;
 g_2 = @(u) F'*u /(P * U_MAX) - 1;
 gplot = zeros(3, 600);
 %% k_0
@@ -98,7 +99,7 @@ for e = 1:nbrElems
     ey = Ey(e, :);
     k_0{e} = planre(ex([1, 3]), ey([1, 3]), [ptype t], D);
 end
-%% Optimization loop
+%% Optimization preparation
 X_old1 = X;
 X_old2 = X;
 low = 0; 
@@ -109,25 +110,34 @@ X_norm = 1;
 alpha = ALPHA;
 frames = []; %struct('cdata',[],'colormap',[]);
 p = P_PAR;
+%% Optimization loop
 while X_norm > TERM_TOL && iter < 600
     iter = iter + 1;
     
     X_filt = N*X;
-
-    K = sysK(k_0, X_filt.^p, Edof, nbrDofs);
+    E = (1-DELTA)*X_filt.^p + DELTA;
+    K = sysK(k_0, E, Edof, nbrDofs);
     K = sparse(K);
     if CASE == 2
         K(I ~= 0) = K(I ~= 0) + k;
     end
     u = solveq(K, F, bc);
     gplot(:, iter) = [g_0(u); g_1(X); g_2(u)];
+    
+    dEdrho = (1-DELTA)*p*X_filt.^(p-1);
+    g_1gradient = V_e/V_max * ones(nbrElems, 1);
     if CASE == 1
-        X_next = optimization(X, u, Edof, k_0, V_e, V_max, X_max, X_min, p, alpha,N);
+        b_k = filterGradient(dEdrho, u, u, k_0, Edof, N) ...
+            .* X .^(alpha+1);
+        X_star_fun = @(lambda) (b_k ./ (lambda*g_1gradient) ).^(1/(alpha+1));
+        g_1OC = @(X_var) g_1(X) + g_1gradient'*(X_var - X);
+        
+        X_next = optimization(X_min, X_max, g_1OC, X_star_fun);
     elseif CASE == 2
         z = solveq(K, I, bc);
-        g_0gradient = filterGradient(X_filt, z, u, p, k_0, Edof, N) / U_MAX;
-        g_1gradient = V_e/V_max*ones(nbrElems, 1);
-        g_2gradient = filterGradient(X_filt, u, u, p, k_0, Edof, N) / (-P*U_MAX);
+
+        g_0gradient = filterGradient(dEdrho, z, u, k_0, Edof, N) / U_MAX;
+        g_2gradient = filterGradient(dEdrho, u, u, k_0, Edof, N) / (-P*U_MAX);
 
         [X_next, low, upp] = mma_solver(iter, X, X_old1, X_old2, g_0gradient, ...
             [g_1(X); g_2(u)], [g_1gradient'; g_2gradient'], low, upp, [nbrElems, ...
@@ -141,8 +151,12 @@ while X_norm > TERM_TOL && iter < 600
     X = X_next;
     
     disp(iter);
+    disp(g_0(u));
     %% Intermediate plotting
     if PLOTNOW
+        for e = 1:length(structPlot)
+            structPlot(e).CData = 1 - N*X;
+        end
         g0Plot.YData = gplot(1, 1:iter);
         g1Plot.YData = gplot(2, 1:iter);
         g2Plot.YData = gplot(3, 1:iter);
@@ -150,17 +164,19 @@ while X_norm > TERM_TOL && iter < 600
     end
     
     % Plot movie frames
-    if MOVIE && mod(iter, 2) == 0
-        figStructure = figure('visible', 'off');
-        superdraw2(Ex, Ey, X);
-        axis equal;
-        frames = [frames getframe(figStructure)];
-        close(figStructure);
+    if MOVIE
+        frames = [frames getframe(figStruct)];
     end
 end
 %% Post-processing plotting
-figure;
-superdraw2(Ex, Ey, N*X);
+figure(figStruct);
+if CASE == 1
+    superdraw2(Ex, Ey, N*X);
+    superdraw2(-Ex, Ey, N*X);
+elseif CASE == 2
+    superdraw2(Ex, Ey, N*X);
+    superdraw2(Ex, -Ey, N*X);
+end
 axis equal;
 annotation('textbox',...
     [0.14 0.94 0.34 0.06], ...
