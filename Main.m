@@ -2,11 +2,11 @@ clear all; clc; close all;
 %% OPTIONS
 PLOTNOW = 1;
 FILTER = 1;
-CASE = 2;
+CASE = 1;
 MOVIE = 0;
 
 TERM_TOL = 1e-3; % termination tolerance
-MESH_SCALE = 10;
+MESH_SCALE = 30;
 P_PAR = 3; % p-parameter
 ALPHA = 1.5; % alpha-parameter
 RADIUS = 0.015; % Radius of Weight function
@@ -72,6 +72,10 @@ title("g_1");
 subplot(2, 2, 3);
 g2Plot = plot(0, 'LineWidth', 1);
 title("g_2");
+subplot(2, 2, 4);
+title("Heaviside filtering");
+betaText = annotation(figGraph, 'textbox', [0.58 0.24 0.10 0.05],...
+    'String',{'\beta = 0.5'});
 
 figStruct = figure;
 if CASE == 1
@@ -84,12 +88,18 @@ end
 axis equal;
 caxis([0 1]);
 %% objective function
+% Heaviside filtering parameters and functions
+H = @(rho, beta, omega) (tanh(beta*omega) + tanh(beta*(rho - omega))) ...
+    /(tanh(beta*omega) + tanh(beta*(1 - omega)));
+H_der = @(rho, beta, omega) beta*(1 - tanh(beta*(rho-omega)).^2) / ...
+    (tanh(beta*omega) + tanh(beta*(1 - omega)));
+
 if CASE == 1
     g_0 = @(u) F'*u;
 elseif CASE == 2
     g_0 = @(u) -I'*u / U_MAX;
 end
-g_1 = @(X) V_e/V_max*sum(N*X) - 1;
+g_1 = @(X, beta) V_e/V_max*sum(H(N*X, beta, 0.5)) - 1;
 g_2 = @(u) F'*u /(P * U_MAX) - 1;
 gplot = zeros(3, 600);
 %% k_0
@@ -106,6 +116,11 @@ low = 0;
 upp = 1;
 iter = 0; % iteration counter
 
+betas = [1e-2 1e-2 1e-1 1:0.2:2 2:0.5:5 7:0.2:10];
+beta_i = 1;
+beta = betas(beta_i);
+omega = 0.5;
+
 X_norm = 1;
 alpha = ALPHA;
 frames = []; %struct('cdata',[],'colormap',[]);
@@ -115,22 +130,22 @@ while X_norm > TERM_TOL && iter < 600
     iter = iter + 1;
     
     X_filt = N*X;
-    E = (1-DELTA)*X_filt.^p + DELTA;
+    E = (1-DELTA)*H(X_filt, beta, omega).^p + DELTA;
     K = sysK(k_0, E, Edof, nbrDofs);
     K = sparse(K);
     if CASE == 2
         K(I ~= 0) = K(I ~= 0) + k;
     end
     u = solveq(K, F, bc);
-    gplot(:, iter) = [g_0(u); g_1(X); g_2(u)];
+    gplot(:, iter) = [g_0(u); g_1(X, beta); g_2(u)];
     
-    dEdrho = (1-DELTA)*p*X_filt.^(p-1);
-    g_1gradient = V_e/V_max * ones(nbrElems, 1);
+    dEdrho = (1-DELTA)*p*H(X_filt, beta, omega).^(p-1) .* H_der(X_filt, beta, omega);
+    g_1gradient = V_e/V_max * N*H_der(X_filt, beta, omega);
     if CASE == 1
         b_k = filterGradient(dEdrho, u, u, k_0, Edof, N) ...
             .* X .^(alpha+1);
         X_star_fun = @(lambda) (b_k ./ (lambda*g_1gradient) ).^(1/(alpha+1));
-        g_1OC = @(X_var) g_1(X) + g_1gradient'*(X_var - X);
+        g_1OC = @(X_var) g_1(X, beta) + g_1gradient'*(X_var - X);
         
         X_next = optimization(X_min, X_max, g_1OC, X_star_fun);
     elseif CASE == 2
@@ -140,7 +155,7 @@ while X_norm > TERM_TOL && iter < 600
         g_2gradient = filterGradient(dEdrho, u, u, k_0, Edof, N) / (-P*U_MAX);
 
         [X_next, low, upp] = mma_solver(iter, X, X_old1, X_old2, g_0gradient, ...
-            [g_1(X); g_2(u)], [g_1gradient'; g_2gradient'], low, upp, [nbrElems, ...
+            [g_1(X, beta); g_2(u)], [g_1gradient'; g_2gradient'], low, upp, [nbrElems, ...
             MMA_S, DELTA]);
     end
     
@@ -152,14 +167,25 @@ while X_norm > TERM_TOL && iter < 600
     
     disp(iter);
     disp(g_0(u));
+    if mod(iter, 5) == 0
+        % Update beta
+        beta_i = beta_i + 1;
+        beta_i = min(beta_i, length(betas));
+        beta = betas(beta_i);
+    end
     %% Intermediate plotting
     if PLOTNOW
         for e = 1:length(structPlot)
-            structPlot(e).CData = 1 - N*X;
+            structPlot(e).CData = 1 - H(N*X, beta, omega);
         end
         g0Plot.YData = gplot(1, 1:iter);
         g1Plot.YData = gplot(2, 1:iter);
         g2Plot.YData = gplot(3, 1:iter);
+        
+        set(0, 'CurrentFigure', figGraph);
+        subplot(2, 2, 4);
+        fplot(@(x) H(x, beta, omega), [0 1]);
+        betaText.String = "\beta = " + beta;
         drawnow
     end
     
@@ -171,11 +197,11 @@ end
 %% Post-processing plotting
 figure(figStruct);
 if CASE == 1
-    superdraw2(Ex, Ey, N*X);
-    superdraw2(-Ex, Ey, N*X);
+    superdraw2(Ex, Ey, H(N*X, beta, omega));
+    superdraw2(-Ex, Ey, H(N*X, beta, omega));
 elseif CASE == 2
-    superdraw2(Ex, Ey, N*X);
-    superdraw2(Ex, -Ey, N*X);
+    superdraw2(Ex, Ey, H(N*X, beta, omega));
+    superdraw2(Ex, -Ey, H(N*X, beta, omega));
 end
 axis equal;
 annotation('textbox',...
